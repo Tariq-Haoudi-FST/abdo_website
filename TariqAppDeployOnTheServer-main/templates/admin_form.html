@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} un produit - Administration{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>{{ action }} un produit</h1>
+                <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Retour au panneau
+                </a>
+            </div>
+
+            <form method="POST">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Informations générales</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label for="title" class="form-label">Titre du produit *</label>
+                                <input type="text" class="form-control" id="title" name="title" 
+                                       value="{% if product %}{{ product.title }}{% endif %}" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="categorie" class="form-label">Catégorie *</label>
+                                <select class="form-control" id="categorie" name="categorie" required>
+                                    <option value="">Choisir une catégorie</option>
+                                    <option value="Draps" {% if product and product.categorie == 'Draps' %}selected{% endif %}>Draps</option>
+                                    <option value="Serviettes" {% if product and product.categorie == 'Serviettes' %}selected{% endif %}>Serviettes</option>
+                                    <option value="Couettes" {% if product and product.categorie == 'Couettes' %}selected{% endif %}>Couettes</option>
+                                    <option value="Oreillers" {% if product and product.categorie == 'Oreillers' %}selected{% endif %}>Oreillers</option>
+                                    <option value="Rideaux" {% if product and product.categorie == 'Rideaux' %}selected{% endif %}>Rideaux</option>
+                                    <option value="Coussins" {% if product and product.categorie == 'Coussins' %}selected{% endif %}>Coussins</option>
+                                    <option value="Plaids" {% if product and product.categorie == 'Plaids' %}selected{% endif %}>Plaids</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="4">{% if product %}{{ product.description }}{% endif %}</textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label for="price" class="form-label">Prix (DHs) *</label>
+                                <input type="number" step="0.01" class="form-control" id="price" name="price" 
+                                       value="{% if product %}{{ product.price }}{% endif %}" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="material" class="form-label">Matière</label>
+                                <select class="form-control" id="material" name="material">
+                                    <option value="">Choisir une matière</option>
+                                    <option value="Coton" {% if product and product.material == 'Coton' %}selected{% endif %}>Coton</option>
+                                    <option value="Lin" {% if product and product.material == 'Lin' %}selected{% endif %}>Lin</option>
+                                    <option value="Soie" {% if product and product.material == 'Soie' %}selected{% endif %}>Soie</option>
+                                    <option value="Polyester" {% if product and product.material == 'Polyester' %}selected{% endif %}>Polyester</option>
+                                    <option value="Microfibre" {% if product and product.material == 'Microfibre' %}selected{% endif %}>Microfibre</option>
+                                    <option value="Bambou" {% if product and product.material == 'Bambou' %}selected{% endif %}>Bambou</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="size" class="form-label">Taille</label>
+                                <input type="text" class="form-control" id="size" name="size" 
+                                       value="{% if product %}{{ product.size }}{% endif %}" 
+                                       placeholder="ex: 140x200cm">
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="color" class="form-label">Couleur</label>
+                                <input type="text" class="form-control" id="color" name="color" 
+                                       value="{% if product %}{{ product.color }}{% endif %}" 
+                                       placeholder="ex: Blanc">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="stock_quantity" class="form-label">Quantité en stock</label>
+                                <input type="number" class="form-control" id="stock_quantity" name="stock_quantity" 
+                                       value="{% if product %}{{ product.stock_quantity }}{% else %}0{% endif %}" min="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Galerie d'images</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="image-inputs">
+                            {% if product and product.images %}
+                                {% for image in product.images %}
+                                <div class="mb-3 image-input-group">
+                                    <label class="form-label">Image {{ loop.index }} {% if image.is_primary %}(Principale){% endif %}</label>
+                                    <div class="input-group">
+                                        <input type="url" class="form-control" name="image_urls" 
+                                               value="{{ image.image_url }}" placeholder="URL de l'image">
+                                        <button type="button" class="btn btn-outline-danger remove-image" onclick="removeImageInput(this)">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                    {% if image.image_url %}
+                                    <div class="mt-2">
+                                        <img src="{{ image.image_url }}" style="max-width: 100px; max-height: 100px; object-fit: cover;" class="rounded">
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                            <div class="mb-3 image-input-group">
+                                <label class="form-label">Image 1 (Principale)</label>
+                                <div class="input-group">
+                                    <input type="url" class="form-control" name="image_urls" placeholder="URL de l'image principale">
+                                    <button type="button" class="btn btn-outline-danger remove-image" onclick="removeImageInput(this)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <button type="button" class="btn btn-outline-primary" onclick="addImageInput()">
+                            <i class="fas fa-plus me-2"></i>Ajouter une image
+                        </button>
+
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                La première image sera définie comme image principale. Vous pouvez ajouter plusieurs images pour créer une galerie.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg px-5">
+                        <i class="fas fa-save me-2"></i>{{ action }} le produit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let imageCount = {{ product.images|length if product and product.images else 1 }};
+
+function addImageInput() {
+    imageCount++;
+    const container = document.getElementById('image-inputs');
+    const div = document.createElement('div');
+    div.className = 'mb-3 image-input-group';
+    div.innerHTML = `
+        <label class="form-label">Image ${imageCount}</label>
+        <div class="input-group">
+            <input type="url" class="form-control" name="image_urls" placeholder="URL de l'image">
+            <button type="button" class="btn btn-outline-danger remove-image" onclick="removeImageInput(this)">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function removeImageInput(button) {
+    const imageInputs = document.querySelectorAll('.image-input-group');
+    if (imageInputs.length > 1) {
+        button.closest('.image-input-group').remove();
+        updateImageLabels();
+    }
+}
+
+function updateImageLabels() {
+    const imageInputs = document.querySelectorAll('.image-input-group');
+    imageInputs.forEach((input, index) => {
+        const label = input.querySelector('label');
+        if (index === 0) {
+            label.textContent = `Image ${index + 1} (Principale)`;
+        } else {
+            label.textContent = `Image ${index + 1}`;
+        }
+    });
+    imageCount = imageInputs.length;
+}
+</script>
+{% endblock %}

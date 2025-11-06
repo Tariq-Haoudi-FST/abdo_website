@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ product.title }} - Linge de Maison{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Accueil</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('category_view', categorie=product.categorie) }}">{{ product.categorie }}</a></li>
+            <li class="breadcrumb-item active">{{ product.title }}</li>
+        </ol>
+    </nav>
+
+    <div class="row">
+        <!-- Galerie d'images -->
+        <div class="col-md-6 mb-4">
+            {% if images %}
+            <div id="productCarousel" class="carousel slide" data-bs-ride="carousel">
+                <div class="carousel-inner">
+                    {% for image in images %}
+                    <div class="carousel-item {% if loop.first %}active{% endif %}">
+                        <img src="{{ image.image_url }}" class="d-block w-100" style="height: 400px; object-fit: cover; border-radius: 8px;" alt="{{ image.alt_text or product.title }}">
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if images|length > 1 %}
+                <button class="carousel-control-prev" type="button" data-bs-target="#productCarousel" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon"></span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#productCarousel" data-bs-slide="next">
+                    <span class="carousel-control-next-icon"></span>
+                </button>
+                
+                <!-- Indicateurs -->
+                <div class="carousel-indicators">
+                    {% for image in images %}
+                    <button type="button" data-bs-target="#productCarousel" data-bs-slide-to="{{ loop.index0 }}" {% if loop.first %}class="active"{% endif %}></button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Miniatures -->
+            {% if images|length > 1 %}
+            <div class="row mt-3">
+                {% for image in images %}
+                <div class="col-3">
+                    <img src="{{ image.image_url }}" class="img-fluid rounded cursor-pointer thumbnail" 
+                         style="height: 80px; object-fit: cover; opacity: 0.7; transition: opacity 0.3s;" 
+                         data-bs-target="#productCarousel" data-bs-slide-to="{{ loop.index0 }}"
+                         onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% else %}
+            <img src="https://via.placeholder.com/500x400?text=Image+non+disponible" class="img-fluid rounded" alt="{{ product.title }}">
+            {% endif %}
+        </div>
+
+        <!-- Détails du produit -->
+        <div class="col-md-6">
+            <span class="category-badge mb-2">{{ product.categorie }}</span>
+            <h1 class="h2 mb-3">{{ product.title }}</h1>
+            <p class="h3 text-primary mb-4">{{ "%.2f"|format(product.price) }} DH</p>
+            
+            <!-- Caractéristiques -->
+            <div class="mb-4">
+                <h5>Caractéristiques :</h5>
+                <ul class="list-unstyled">
+                    {% if product.material %}
+                    <li><strong>Matière :</strong> {{ product.material }}</li>
+                    {% endif %}
+                    {% if product.size %}
+                    <li><strong>Taille :</strong> {{ product.size }}</li>
+                    {% endif %}
+                    {% if product.color %}
+                    <li><strong>Couleur :</strong> {{ product.color }}</li>
+                    {% endif %}
+                    {% if product.stock_quantity > 0 %}
+                    <li><strong>Stock :</strong> <span class="text-success">En stock ({{ product.stock_quantity }} disponibles)</span></li>
+                    {% else %}
+                    <li><strong>Stock :</strong> <span class="text-warning">Stock limité</span></li>
+                    {% endif %}
+                </ul>
+            </div>
+
+            <!-- Description -->
+            {% if product.description %}
+            <div class="mb-4">
+                <h5>Description :</h5>
+                <p>{{ product.description }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Boutons d'action -->
+            <div class="d-grid gap-2">
+                <a href="{{ url_for('checkout', product_id=product.id) }}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-shopping-cart me-2"></i>Commander maintenant
+                </a>
+                <button type="button" class="btn btn-outline-primary" onclick="window.history.back()">
+                    <i class="fas fa-arrow-left me-2"></i>Retour
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.thumbnail {
+    cursor: pointer;
+}
+.thumbnail:hover {
+    transform: scale(1.05);
+}
+</style>
+{% endblock %}

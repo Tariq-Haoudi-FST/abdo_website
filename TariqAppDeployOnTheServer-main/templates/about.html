@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}À propos - Linge de Maison{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <h1 class="text-center mb-5">À propos de nous</h1>
+            
+            <div class="text-center mb-5">
+                <img src="https://images.unsplash.com/photo-1586105251261-72a756497a11?w=600&h=300&fit=crop" alt="Notre boutique" class="img-fluid rounded">
+            </div>
+            
+            <p class="lead">Bienvenue chez Linge de Maison, votre destination de confiance pour des produits textiles de qualité exceptionnelle.</p>
+            
+            <p>Depuis notre création, nous nous engageons à offrir à nos clients une sélection soigneusement choisie de linge de maison qui allie confort, élégance et durabilité. Notre passion pour les textiles de qualité nous guide dans chaque choix de produit que nous proposons.</p>
+            
+            <h3>Notre Mission</h3>
+            <p>Transformer votre maison en un véritable cocon de bien-être grâce à des produits textiles d'exception. Nous croyons que le linge de maison de qualité contribue directement à votre confort quotidien et à l'ambiance de votre intérieur.</p>
+            
+            <h3>Nos Valeurs</h3>
+            <div class="row mt-4">
+                <div class="col-md-4 mb-3">
+                    <div class="text-center">
+                        <i class="fas fa-medal fa-2x text-primary mb-3"></i>
+                        <h5>Qualité</h5>
+                        <p>Nous sélectionnons uniquement des produits répondant à nos standards élevés de qualité.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="text-center">
+                        <i class="fas fa-heart fa-2x text-primary mb-3"></i>
+                        <h5>Confort</h5>
+                        <p>Votre bien-être est au cœur de notre sélection de produits.</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="text-center">
+                        <i class="fas fa-leaf fa-2x text-primary mb-3"></i>
+                        <h5>Durabilité</h5>
+                        <p>Nous privilégions des matériaux durables et respectueux de l'environnement.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <h3>Notre Engagement</h3>
+            <p>Nous nous engageons à vous offrir une expérience d'achat exceptionnelle, depuis la découverte de nos produits jusqu'à leur livraison chez vous. Notre équipe est toujours disponible pour vous conseiller et vous accompagner dans vos choix.</p>
+            
+            <div class="text-center mt-5">
+                <a href="{{ url_for('contact') }}" class="btn btn-primary btn-lg">Contactez-nous</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

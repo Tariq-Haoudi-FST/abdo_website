@@ -1,0 +1,1378 @@
+Pour créer votre application sur Replit, vous devez simplement créer les fichiers ci-dessous et y copier le contenu correspondant. Assurez-vous de créer un dossier nommé templates pour tous les fichiers HTML.
+
+📄 Fichier app.py
+Ce fichier est le cœur de votre application. Copiez-le et enregistrez-le sous le nom app.py.
+
+Python
+
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
+from flask_sqlalchemy import SQLAlchemy
+from flask_mail import Mail, Message
+import config
+from math import ceil
+from datetime import datetime
+import pandas as pd
+from io import BytesIO
+
+# -------------------------------
+# Initialisation de l'application
+# -------------------------------
+app = Flask(__name__)
+app.secret_key = 'supersecretkey'
+
+# Utilisation de SQLite pour les tests
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///mydb.sqlite3'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configuration Flask-Mail
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USERNAME'] = 'tariq.haoudi@etu.uae.ac.ma'
+app.config['MAIL_PASSWORD'] = 'ton_mot_de_passe_application'
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
+
+mail = Mail(app)
+db = SQLAlchemy(app)
+
+# -------------------------------
+# Modèles de base de données
+# -------------------------------
+class Course(db.Model):
+    __tablename__ = 'textes_complets'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255))
+    description = db.Column(db.Text)
+    price = db.Column(db.Numeric(10, 2))
+    link = db.Column(db.Text)
+    categorie = db.Column(db.String(100))
+    image_url = db.Column(db.Text)
+
+class Order(db.Model):
+    __tablename__ = 'orders'
+    id          = db.Column(db.Integer, primary_key=True)
+    full_name   = db.Column(db.String(255), nullable=False)
+    email       = db.Column(db.String(255), nullable=False)
+    course_id   = db.Column(db.Integer, db.ForeignKey('textes_complets.id'), nullable=False)
+    price       = db.Column(db.Numeric(10, 2), nullable=False)
+    paypal_id   = db.Column(db.String(100))          
+    is_paid     = db.Column(db.Boolean, default=False)
+    course      = db.relationship('Course')
+
+class Offer(db.Model):
+    __tablename__ = 'offers'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255))
+    description = db.Column(db.Text)
+    image_url = db.Column(db.Text)
+    link = db.Column(db.Text)
+
+class ClientRequest(db.Model):
+    __tablename__ = 'client_requests'
+    id        = db.Column(db.Integer, primary_key=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('textes_complets.id'), nullable=False)
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name  = db.Column(db.String(100), nullable=False)
+    country    = db.Column(db.String(100), nullable=False)
+    city       = db.Column(db.String(100), nullable=False)
+    address    = db.Column(db.String(255), nullable=False)
+    phone      = db.Column(db.String(50), nullable=False)
+    whatsapp   = db.Column(db.String(50))
+    message    = db.Column(db.Text)
+    quantity   = db.Column(db.String(50))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_processed = db.Column(db.Boolean, default=False)
+    course = db.relationship('Course')
+
+# Import des identifiants admin depuis config.py
+ADMIN_USERNAME = config.ADMIN_USERNAME
+ADMIN_PASSWORD = config.ADMIN_PASSWORD
+
+# -------------------------------
+# Routes publiques
+# -------------------------------
+@app.route('/')
+def index():
+    categories = db.session.query(Course.categorie).distinct().all()
+    page = request.args.get('page', 1, type=int)
+    per_page = 8
+    courses = Course.query.paginate(page=page, per_page=per_page, error_out=False)
+    offers = Offer.query.all()
+    return render_template('index.html', courses=courses, categories=categories, offers=offers)
+
+@app.route('/search', methods=['GET'])
+def search():
+    query = request.args.get('query', '')
+    categories = db.session.query(Course.categorie).distinct().all()
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    courses = Course.query.filter(Course.title.ilike(f'%{query}%')).paginate(page=page, per_page=per_page, error_out=False)
+    offers = Offer.query.all()
+    return render_template('search.html', courses=courses, categories=categories, offers=offers, query=query)
+
+@app.route('/category/<categorie>')
+def category_view(categorie):
+    categories = db.session.query(Course.categorie).distinct().all()
+    page = request.args.get('page', 1, type=int)
+    per_page = 6
+    search = request.args.get('search', '').strip()
+    query = Course.query.filter_by(categorie=categorie)
+    offers = Offer.query.all()
+    if search:
+        query = query.filter(Course.title.ilike(f'%{search}%'))
+    courses = query.paginate(page=page, per_page=per_page, error_out=False)
+    return render_template('category.html', courses=courses, categorie=categorie, categories=categories, offers=offers, search=search)
+
+@app.route('/course/<int:course_id>')
+def course_detail(course_id):
+    categories = db.session.query(Course.categorie).distinct().all()
+    course = Course.query.get_or_404(course_id)
+    return render_template('course_detail.html', categories=categories, course=course)
+
+@app.route('/checkout/<int:course_id>', methods=["GET", "POST"])
+def checkout(course_id):
+    course = Course.query.get_or_404(course_id)
+    if request.method == "POST":
+        first_name = request.form['first_name']
+        last_name  = request.form['last_name']
+        country    = request.form['country']
+        city       = request.form['city']
+        address    = request.form['address']
+        phone      = request.form['phone']
+        whatsapp   = request.form['whatsapp']
+        message    = request.form['message']
+        quantity   = request.form['quantity']
+        client_req = ClientRequest(
+            course_id=course.id,
+            first_name=first_name,
+            last_name=last_name,
+            country=country,
+            city=city,
+            address=address,
+            phone=phone,
+            whatsapp=whatsapp,
+            message=message,
+            quantity=quantity,
+            is_processed=False
+        )
+        db.session.add(client_req)
+        db.session.commit()
+        flash("✅ تم إرسال طلبك بنجاح، سنتواصل معك قريباً.")
+        return redirect(url_for('checkout', course_id=course.id))
+    return render_template('checkout.html', course=course)
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.route('/jdid')
+def jdid():
+    return render_template('jdid.html')
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+# -------------------------------
+# Routes admin
+# -------------------------------
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        if request.form['username'] == ADMIN_USERNAME and request.form['password'] == ADMIN_PASSWORD:
+            session['admin'] = True
+            return redirect(url_for('admin_panel'))
+        else:
+            flash('Identifiants incorrects.')
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin', None)
+    return redirect(url_for('admin_login'))
+
+@app.route('/admin')
+def admin_panel():
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    courses = Course.query.paginate(page=page, per_page=per_page, error_out=False)
+    offers = Offer.query.paginate(page=page, per_page=per_page, error_out=False)
+    return render_template('admin_panel.html', courses=courses, offers=offers)
+
+@app.route('/admin/add', methods=['GET', 'POST'])
+def admin_add():
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    if request.method == 'POST':
+        new_course = Course(
+            title=request.form['title'],
+            description=request.form['description'],
+            price=request.form['price'],
+            link=request.form['link'],
+            categorie=request.form['categorie'],
+            image_url=request.form['image_url']
+        )
+        db.session.add(new_course)
+        db.session.commit()
+        return redirect(url_for('admin_panel'))
+    return render_template('admin_form.html', action='Ajouter')
+
+@app.route('/admin/edit/<int:id>', methods=['GET', 'POST'])
+def admin_edit(id):
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    course = Course.query.get_or_404(id)
+    if request.method == 'POST':
+        course.title = request.form['title']
+        course.description = request.form['description']
+        course.price = request.form['price']
+        course.link = request.form['link']
+        course.categorie = request.form['categorie']
+        course.image_url = request.form['image_url']
+        db.session.commit()
+        return redirect(url_for('admin_panel'))
+    return render_template('admin_form.html', course=course, action='Modifier')
+
+@app.route('/admin/delete/<int:id>', methods=['POST'])
+def admin_delete(id):
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    course = Course.query.get_or_404(id)
+    db.session.delete(course)
+    db.session.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/comments')
+def admin_comments():
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    query = ClientRequest.query
+    product = request.args.get('product')
+    first_name = request.args.get('first_name')
+    last_name = request.args.get('last_name')
+    country = request.args.get('country')
+    city = request.args.get('city')
+    processed = request.args.get('processed')
+    if product:
+        query = query.join(Course).filter(Course.title.ilike(f'%{product}%'))
+    if first_name:
+        query = query.filter(ClientRequest.first_name.ilike(f'%{first_name}%'))
+    if last_name:
+        query = query.filter(ClientRequest.last_name.ilike(f'%{last_name}%'))
+    if country:
+        query = query.filter(ClientRequest.country.ilike(f'%{country}%'))
+    if city:
+        query = query.filter(ClientRequest.city.ilike(f'%{city}%'))
+    if processed is not None:
+        if processed == 'true':
+            query = query.filter(ClientRequest.is_processed == True)
+        elif processed == 'false':
+            query = query.filter(ClientRequest.is_processed == False)
+    sort_by = request.args.get('sort_by', 'created_at')
+    order = request.args.get('order', 'desc')
+    if sort_by == 'name':
+        if order == 'asc':
+            query = query.order_by(ClientRequest.first_name.asc())
+        else:
+            query = query.order_by(ClientRequest.first_name.desc())
+    elif sort_by == 'status':
+        if order == 'asc':
+            query = query.order_by(ClientRequest.is_processed.asc())
+        else:
+            query = query.order_by(ClientRequest.is_processed.desc())
+    elif sort_by == 'product':
+        if order == 'asc':
+            query = query.order_by(Course.title.asc())
+        else:
+            query = query.order_by(Course.title.desc())
+    else:
+        if order == 'asc':
+            query = query.order_by(ClientRequest.created_at.asc())
+        else:
+            query = query.order_by(ClientRequest.created_at.desc())
+    comments = query.all()
+    return render_template('admin_comments.html', comments=comments, sort_by=sort_by, order=order)
+
+@app.route('/admin/toggle_request/<int:request_id>')
+def toggle_request(request_id):
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    client_request = ClientRequest.query.get_or_404(request_id)
+    client_request.is_processed = not client_request.is_processed
+    db.session.commit()
+    return redirect(url_for('admin_comments', **request.args))
+
+@app.route('/admin/export_comments_excel')
+def export_comments_excel():
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    query = ClientRequest.query.options(db.joinedload(ClientRequest.course)).order_by(ClientRequest.created_at.desc())
+    product = request.args.get('product')
+    first_name = request.args.get('first_name')
+    last_name = request.args.get('last_name')
+    country = request.args.get('country')
+    city = request.args.get('city')
+    processed = request.args.get('processed')
+    if product:
+        query = query.filter(Course.title.ilike(f'%{product}%'))
+    if first_name:
+        query = query.filter(ClientRequest.first_name.ilike(f'%{first_name}%'))
+    if last_name:
+        query = query.filter(ClientRequest.last_name.ilike(f'%{last_name}%'))
+    if country:
+        query = query.filter(ClientRequest.country.ilike(f'%{country}%'))
+    if city:
+        query = query.filter(ClientRequest.city.ilike(f'%{city}%'))
+    if processed is not None:
+        if processed == 'true':
+            query = query.filter(ClientRequest.is_processed == True)
+        elif processed == 'false':
+            query = query.filter(ClientRequest.is_processed == False)
+    data = []
+    for req in query.all():
+        data.append({
+            'ID': req.id,
+            'Produit': req.course.title,
+            'Quantité': req.quantity,
+            'Prénom': req.first_name,
+            'Nom': req.last_name,
+            'Pays': req.country,
+            'Ville': req.city,
+            'Adresse': req.address,
+            'Téléphone': req.phone,
+            'WhatsApp': req.whatsapp,
+            'Message': req.message,
+            'Date': req.created_at.strftime('%Y-%m-%d %H:%M'),
+            'Traitée': 'Oui' if req.is_processed else 'Non'
+        })
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Demandes')
+    output.seek(0)
+    return send_file(output,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True,
+                     download_name='demandes_clients.xlsx')
+
+# -------------------------------
+# CRUD pour offres spéciales
+# -------------------------------
+@app.route('/admin/offer/add', methods=['GET', 'POST'])
+def add_offer():
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    if request.method == 'POST':
+        new_offer = Offer(
+            title=request.form['title'],
+            description=request.form['description'],
+            image_url=request.form['image_url'],
+            link=request.form['link']
+        )
+        db.session.add(new_offer)
+        db.session.commit()
+        return redirect(url_for('admin_panel'))
+    return render_template('offer_form.html', action='Ajouter')
+
+@app.route('/admin/offer/edit/<int:id>', methods=['GET', 'POST'])
+def edit_offer(id):
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    offer = Offer.query.get_or_404(id)
+    if request.method == 'POST':
+        offer.title = request.form['title']
+        offer.description = request.form['description']
+        offer.image_url = request.form['image_url']
+        offer.link = request.form['link']
+        db.session.commit()
+        return redirect(url_for('admin_panel'))
+    return render_template('offer_form.html', offer=offer, action='Modifier')
+
+@app.route('/admin/offer/delete/<int:id>', methods=['POST'])
+def delete_offer(id):
+    if not session.get('admin'):
+        return redirect(url_for('admin_login'))
+    offer = Offer.query.get_or_404(id)
+    db.session.delete(offer)
+    db.session.commit()
+    return redirect(url_for('admin_panel'))
+    
+# -------------------------------
+# Création des tables automatiquement
+# -------------------------------
+with app.app_context():
+    db.create_all()
+    print("✅ Base de données créée avec succès !")
+
+# -------------------------------
+# Lancement de l'application
+# -------------------------------
+if __name__ == '__main__':
+    app.run(debug=True)
+📄 Fichier config.py
+Ce fichier contient les informations d'identification de l'administrateur. Créez un fichier config.py.
+
+Python
+
+# config.py
+
+ADMIN_USERNAME = 'admin'
+ADMIN_PASSWORD = 'strongpassword'
+📄 Fichier requirements.txt
+Ce fichier liste les bibliothèques Python nécessaires. Créez un fichier requirements.txt.
+
+Flask
+Flask-Mail
+flask-sqlalchemy
+pymysql
+pandas
+openpyxl
+📄 Fichier README.md
+Ce fichier sert de documentation pour votre projet. Créez un fichier README.md.
+
+Markdown
+
+# FreeCours4U.com
+FreeCours4U.com offers free courses in programming, web development, cybersecurity, and AI. Learn at your own pace and earn certificates to boost your tech career.
+
+# --- README.md ---
+# موقع بيع الدورات التعليمية باستخدام Flask
+
+موقع بسيط يعرض دورات تعليمية مع إمكانية عرض التفاصيل.
+📂 Fichiers HTML
+Créez un dossier nommé templates et placez-y tous les fichiers HTML suivants.
+
+📄 Fichier about.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}À propos de nous{% endblock %}
+{% block content %}
+  <section class="container my-5">
+    <h1 class="text-center text-3xl font-bold text-primary mb-4">À propos de nous</h1>
+    <p class="text-center">Bienvenue sur FreeCours4U.com, votre plateforme dédiée pour apprendre gratuitement. Nous offrons des cours dans les domaines de la programmation, du développement web, de la cybersécurité et de l'IA.</p>
+  </section>
+  <div class="advertisement">
+      <img src="https://via.placeholder.com/468x60?text=Publicité" alt="Publicité">
+  </div>
+{% endblock %}
+📄 Fichier admin_comments.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Demandes des clients{% endblock %}
+{% block content %}
+<section class="container py-4">
+    <h2>📋 Demandes des clients</h2>
+    <a href="{{ url_for('admin_panel') }}" class="btn btn-secondary mb-3">⬅ Retour au panneau</a>
+
+    <form method="get" action="{{ url_for('admin_comments') }}" class="mb-4">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <input type="text" name="product" class="form-control" placeholder="Filtrer par produit" value="{{ request.args.get('product', '') }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="first_name" class="form-control" placeholder="Filtrer par prénom" value="{{ request.args.get('first_name', '') }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="last_name" class="form-control" placeholder="Filtrer par nom" value="{{ request.args.get('last_name', '') }}">
+            </div>
+            <div class="col-md-2">
+                <select name="processed" class="form-control">
+                    <option value="">Filtrer par statut</option>
+                    <option value="true" {% if request.args.get('processed') == 'true' %}selected{% endif %}>✔ Traitée</option>
+                    <option value="false" {% if request.args.get('processed') == 'false' %}selected{% endif %}>❌ Non traitée</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Filtrer</button>
+            </div>
+            <div class="col-md-2">
+                <a href="{{ url_for('admin_comments') }}" class="btn btn-danger w-100">Réinitialiser</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-dark table-striped">
+            <thead>
+                <tr>
+                    <th><a href="{{ url_for('admin_comments', sort_by='product', order='asc' if sort_by != 'product' or order == 'desc' else 'desc', product=request.args.get('product'), first_name=request.args.get('first_name'), last_name=request.args.get('last_name'), processed=request.args.get('processed')) }}">Produit</a></th>
+                    <th><a href="{{ url_for('admin_comments', sort_by='name', order='asc' if sort_by != 'name' or order == 'desc' else 'desc', product=request.args.get('product'), first_name=request.args.get('first_name'), last_name=request.args.get('last_name'), processed=request.args.get('processed')) }}">Prénom Nom</a></th>
+                    <th>Pays</th>
+                    <th>Ville</th>
+                    <th>Adresse</th>
+                    <th>Téléphone</th>
+                    <th>WhatsApp</th>
+                    <th>Message</th>
+                    <th><a href="{{ url_for('admin_comments', sort_by='date', order='asc' if sort_by != 'date' or order == 'desc' else 'desc', product=request.args.get('product'), first_name=request.args.get('first_name'), last_name=request.args.get('last_name'), processed=request.args.get('processed')) }}">Date</a></th>
+                    <th><a href="{{ url_for('admin_comments', sort_by='status', order='asc' if sort_by != 'status' or order == 'desc' else 'desc', product=request.args.get('product'), first_name=request.args.get('first_name'), last_name=request.args.get('last_name'), processed=request.args.get('processed')) }}">Statut</a></th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for comment in comments %}
+            <tr>
+                <td>{{ comment.course.title }}</td>
+                <td>{{ comment.first_name }} {{ comment.last_name }}</td>
+                <td>{{ comment.country }}</td>
+                <td>{{ comment.city }}</td>
+                <td>{{ comment.address }}</td>
+                <td>{{ comment.phone }}</td>
+                <td>{{ comment.whatsapp }}</td>
+                <td>{{ comment.message }}</td>
+                <td>{{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    {% if comment.is_processed %}
+                        ✔ تم المعالجة
+                    {% else %}
+                        ❌ غير معالج
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('toggle_request', request_id=comment.id) }}"
+                       class="btn btn-sm {% if comment.is_processed %}btn-warning{% else %}btn-success{% endif %}">
+                        {% if comment.is_processed %}
+                            🔄 إرجاع كغير معالج
+                        {% else %}
+                            ✔ تعليم كمعالج
+                        {% endif %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <section class="container py-4">
+    <h2>📋 Demandes des clients</h2>
+    <a href="{{ url_for('admin_panel') }}" class="btn btn-secondary mb-3">⬅ Retour au panneau</a>
+    <a href="{{ url_for('export_comments_excel') }}" class="btn btn-success mb-3">Télécharger en Excel</a>
+    </section>
+</section>
+{% endblock %}
+📄 Fichier admin_form.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}{{ action }} un cours{% endblock %}
+{% block content %}
+  <section class="container py-4">
+    <h2>{{ action }} un cours</h2>
+    <form method="POST">
+        <input class="form-control mb-2" name="title" value="{{ course.title if course else '' }}" placeholder="Titre" required>
+        <textarea class="form-control mb-2" name="description" placeholder="Description">{{ course.description if course else '' }}</textarea>
+        <input class="form-control mb-2" name="price" value="{{ course.price if course else '' }}" placeholder="Prix" required>
+        <input class="form-control mb-2" name="link" value="{{ course.link if course else '' }}" placeholder="Lien du cours" required>
+        <input class="form-control mb-2" name="categorie" value="{{ course.categorie if course else '' }}" placeholder="Catégorie" required>
+        <input class="form-control mb-2" name="image_url" value="{{ course.image_url if course else '' }}" placeholder="URL de l’image">
+        <button class="btn btn-primary">{{ action }}</button>
+    </form>
+        <div class="mt-6 text-center">
+            <a href="{{ url_for('admin_panel') }}" class="text-blue-600 hover:underline">Retour à la gestion des offres</a>
+        </div>
+  </section>
+{% endblock %}
+📄 Fichier admin_login.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Connexion Admin{% endblock %}
+{% block content %}
+  <section class="container py-5">
+    <h2>Connexion Admin</h2>
+    <form method="POST">
+      <input class="form-control mb-2" name="username" placeholder="Nom d'utilisateur" required>
+      <input class="form-control mb-2" name="password" type="password" placeholder="Mot de passe" required>
+      <button class="btn btn-primary">Connexion</button>
+    </form>
+    <div class="advertisement">
+        <img src="https://via.placeholder.com/468x60?text=Publicité" alt="Publicité">
+    </div>
+  </section>
+{% endblock %}
+📄 Fichier admin_panel.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Panneau d'administration{% endblock %}
+{% block content %}
+  <section class="container py-4">
+    <h2>Panneau d'administration</h2>
+    <a href="{{ url_for('admin_add') }}" class="btn btn-success mb-3">➕ Ajouter un cours</a>
+    <a href="{{ url_for('add_offer') }}" class="btn btn-info mb-3">➕ Ajouter une offre</a>
+    <a href="{{ url_for('admin_comments') }}" class="btn btn-warning mb-3">💬 Voir tous les commentaires</a>
+    <a href="{{ url_for('admin_logout') }}" class="btn btn-danger mb-3 float-end">Déconnexion</a>
+    <h3>Cours</h3>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Titre</th>
+                <th>Catégorie</th>
+                <th>Prix</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for course in courses.items %}
+            <tr>
+                <td>{{ course.title }}</td>
+                <td>{{ course.categorie }}</td>
+                <td>{{ course.price }} €</td>
+                <td>
+                    <a href="{{ url_for('admin_edit', id=course.id) }}" class="btn btn-warning btn-sm">Modifier</a>
+                    <form method="POST" action="{{ url_for('admin_delete', id=course.id) }}" style="display:inline-block">
+                        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            {% if courses.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin_panel', page=courses.prev_num) }}" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </span>
+            </li>
+            {% endif %}
+
+            {% for num in courses.iter_pages() %}
+                {% if num %}
+                    {% if num == courses.page %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                    {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('admin_panel', page=num) }}">{{ num }}</a>
+                        </li>
+                    {% endif %}
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if courses.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin_panel', page=courses.next_num) }}" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </span>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    <hr>
+    <h3>Offres spéciales</h3>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Titre</th>
+                <th>Description</th>
+                <th>Lien</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for offer in offers.items %}
+            <tr>
+                <td>{{ offer.title }}</td>
+                <td>{{ offer.description }}</td>
+                <td><a href="{{ offer.link }}" target="_blank">Lien</a></td>
+                <td>
+                    <a href="{{ url_for('edit_offer', id=offer.id) }}" class="btn btn-warning btn-sm">Modifier</a>
+                    <form method="POST" action="{{ url_for('delete_offer', id=offer.id) }}" style="display:inline-block">
+                        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+        <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            {% if offers.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin_panel', page=offers.prev_num) }}" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </span>
+            </li>
+            {% endif %}
+
+            {% for num in offers.iter_pages() %}
+                {% if num %}
+                    {% if num == offers.page %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                    {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('admin_panel', page=num) }}">{{ num }}</a>
+                        </li>
+                    {% endif %}
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if offers.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin_panel', page=offers.next_num) }}" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </span>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+  </section>
+{% endblock %}
+📄 Fichier base.html
+HTML
+
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}FreeCours4U{% endblock %}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body {
+      background: radial-gradient(circle at top left, #0f172a, #1e293b);
+      color: #e5e7eb;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding-top: 10px;
+    }
+
+    /* Navbar customization */
+    .navbar-custom {
+      background-color: #111827;
+      font-size:small;
+    }
+
+    .navbar-custom .nav-link {
+      color: #f1f5f9 !important;
+    }
+
+    .navbar-custom .nav-link:hover {
+      background-color: #334155 !important;
+      color: #ffffff !important;
+    }
+
+    /* Animation */
+    @keyframes roll-in-left {
+      0% {
+        transform: translateX(-100%) rotate(-120deg);
+        opacity: 0;
+      }
+      100% {
+        transform: translateX(0) rotate(0deg);
+        opacity: 1;
+      }
+    }
+
+    .animate-roll-in-left {
+      animation: roll-in-left 0.65s cubic-bezier(0.230, 1.000, 0.320, 1.000) both;
+    }
+
+    /* Additional styles for better look */
+    .card {
+      background-color: #1e293b;
+      border: 1px solid #334155;
+      color: #e5e7eb;
+      transition: transform 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+    }
+
+    .btn-primary {
+      background-color: #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    .btn-primary:hover {
+      background-color: #2563eb;
+      border-color: #2563eb;
+    }
+
+    .btn-secondary {
+      background-color: #64748b;
+      border-color: #64748b;
+    }
+    
+    .btn-warning {
+        background-color: #f97316;
+        border-color: #f97316;
+        color: white;
+    }
+
+    .btn-info {
+        background-color: #0ea5e9;
+        border-color: #0ea5e9;
+        color: white;
+    }
+    .btn-warning:hover {
+        background-color: #ea580c;
+        border-color: #ea580c;
+    }
+    .btn-danger {
+        background-color: #ef4444;
+        border-color: #ef4444;
+    }
+
+    .text-primary {
+      color: #3b82f6;
+    }
+    
+    /* Footer and Contact styles */
+    .bg-gray-800 {
+        background-color: #1f2937;
+    }
+    .text-gray-300 {
+        color: #d1d5db;
+    }
+
+    /* Advertisement styles */
+    .advertisement {
+        text-align: center;
+        margin-top: 20px;
+    }
+  </style>
+
+</head>
+<body class="bg-gray-900 text-gray-300">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-gray-800 shadow">
+  <div class="container-fluid">
+    <a class="navbar-brand text-xl font-bold" href="{{ url_for('index') }}">FreeCours4U</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link" aria-current="page" href="{{ url_for('index') }}">Accueil</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('jdid') }}">Jdid</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('about') }}">À propos</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('admin_login') }}">Admin</a>
+        </li>
+      </ul>
+      <form class="d-flex" role="search" action="{{ url_for('search') }}" method="get">
+        <input class="form-control me-2" type="search" name="query" placeholder="Rechercher" aria-label="Search">
+        <button class="btn btn-outline-light" type="submit">Rechercher</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<section class="container my-5 bg-white text-gray-900 p-4 rounded shadow">
+  <h2 class="text-center mb-4 text-xl font-bold">📞 Contactez-nous</h2>
+  <p class="text-center mb-3">Pour toute question ou information supplémentaire, contactez-nous :</p>
+  <div class="d-flex justify-content-center gap-3 flex-wrap">
+    <a href="mailto:tariq.haoudi@etu.uae.ac.ma" class="btn btn-dark">Email</a>
+    <a href="tel:+212718002689" class="btn btn-dark">Téléphone</a>
+  </div>
+</section>
+
+<footer class="bg-gray-800 text-gray-300 text-center py-4 mt-4">
+  <div class="container mx-auto flex flex-col md:flex-row justify-center items-center gap-4">
+    <p class="mb-2 md:mb-0">&copy; 2024 FreeCours4U. Tous droits réservés.</p>
+    <div class="flex gap-4">
+      <a href="{{ url_for('about') }}" class="hover:underline hover:text-white">À propos</a>
+      <a href="{{ url_for('privacy') }}" class="hover:underline hover:text-white">Confidentialité</a>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>
+📄 Fichier privacy.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Politique de confidentialité{% endblock %}
+{% block content %}
+  <section class="container my-5">
+    <h1 class="text-center text-3xl font-bold text-primary mb-4">Politique de confidentialité</h1>
+    <div class="bg-white text-gray-900 p-4 rounded shadow">
+      <p>Cette politique de confidentialité décrit comment nous collectons, utilisons et protégeons vos informations personnelles lorsque vous utilisez notre site web.</p>
+      
+      <h3>Collecte d'informations</h3>
+      <p>Nous pouvons collecter des informations telles que votre nom, votre adresse e-mail, votre numéro de téléphone et votre adresse lorsque vous effectuez un achat ou que vous nous contactez.</p>
+      
+      <h3>Utilisation des informations</h3>
+      <p>Les informations collectées sont utilisées pour traiter vos commandes, répondre à vos demandes et améliorer nos services.</p>
+      
+      <h3>Protection des informations</h3>
+      <p>Nous mettons en œuvre des mesures de sécurité pour protéger vos informations contre tout accès, modification, divulgation ou destruction non autorisés.</p>
+      
+      <h3>Divulgation à des tiers</h3>
+      <p>Nous ne vendons, n'échangeons ni ne louons vos informations personnelles à des tiers sans votre consentement, sauf si la loi l'exige.</p>
+    </div>
+  </section>
+{% endblock %}
+📄 Fichier jdid.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Nouveautés{% endblock %}
+{% block content %}
+  <section class="container my-5">
+    <h1 class="text-center text-3xl font-bold text-primary mb-4">Quoi de neuf ?</h1>
+    <div class="bg-white text-gray-900 p-4 rounded shadow">
+      <p>Restez à jour avec les dernières nouveautés de notre site. Nous ajoutons régulièrement de nouveaux cours et mettons à jour notre catalogue pour vous offrir la meilleure expérience d'apprentissage possible.</p>
+    </div>
+  </section>
+{% endblock %}
+📄 Fichier index.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Accueil{% endblock %}
+{% block content %}
+<main class="container my-4">
+  {% with messages = get_flashed_messages() %}
+  {% if messages %}
+  <div class="alert alert-success">
+    {{ messages[0] }}
+  </div>
+  {% endif %}
+  {% endwith %}
+    
+    <div class="mt-4">
+        <h2 class="text-xl font-bold mb-2">Offres Spéciales</h2>
+        <div class="flex flex-wrap gap-4">
+            {% for offer in offers %}
+            <div class="bg-gray-700 p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
+                <h3 class="text-white text-lg font-bold">{{ offer.title }}</h3>
+                <p class="text-gray-400">{{ offer.description }}</p>
+                <a href="{{ offer.link }}" class="text-blue-400 hover:text-blue-200">En savoir plus</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+  <div class="advertisement">
+      <img src="https://via.placeholder.com/728x90?text=Publicité" alt="Publicité">
+  </div>
+  
+  <div class="container my-5">
+    <div class="row">
+        <div class="col-md-3">
+            <h2 class="text-xl font-bold mb-3">Catégories</h2>
+            <div class="list-group">
+                {% for category in categories %}
+                <a href="{{ url_for('category_view', categorie=category[0]) }}" class="list-group-item list-group-item-action bg-gray-700 text-gray-200 hover:bg-gray-600">{{ category[0] }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="col-md-9">
+            <h2 class="text-xl font-bold mb-3">Derniers cours</h2>
+            <div class="row">
+                {% for course in courses.items %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 bg-gray-800 text-white rounded-lg overflow-hidden shadow-lg">
+                        <img src="{{ course.image_url }}" class="card-img-top" alt="{{ course.title }}">
+                        <div class="card-body">
+                            <h5 class="card-title text-xl font-bold">{{ course.title }}</h5>
+                            <p class="card-text text-sm">{{ course.description[:100] }}...</p>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <span class="text-lg font-bold text-primary">{{ course.price }} €</span>
+                            <a href="{{ url_for('course_detail', course_id=course.id) }}" class="btn btn-primary btn-sm">Détails</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if courses.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('index', page=courses.prev_num) }}" aria-label="Précédent">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Précédent">
+                            <span aria-hidden="true">&laquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+
+                    {% for num in courses.iter_pages() %}
+                        {% if num %}
+                            {% if num == courses.page %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% else %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('index', page=num) }}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if courses.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('index', page=courses.next_num) }}" aria-label="Suivant">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Suivant">
+                            <span aria-hidden="true">&raquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+  </div>
+</main>
+{% endblock %}
+📄 Fichier search.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Résultats de recherche{% endblock %}
+{% block content %}
+<div class="container my-5">
+    <h2>Résultats de recherche pour "{{ query }}"</h2>
+    <div class="row">
+        {% for course in courses.items %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 bg-gray-800 text-white rounded-lg overflow-hidden shadow-lg">
+                <img src="{{ course.image_url }}" class="card-img-top" alt="{{ course.title }}">
+                <div class="card-body">
+                    <h5 class="card-title text-xl font-bold">{{ course.title }}</h5>
+                    <p class="card-text text-sm">{{ course.description[:100] }}...</p>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <span class="text-lg font-bold text-primary">{{ course.price }} €</span>
+                    <a href="{{ url_for('course_detail', course_id=course.id) }}" class="btn btn-primary btn-sm">Détails</a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p>Aucun résultat trouvé pour votre recherche.</p>
+        {% endfor %}
+    </div>
+
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            {% if courses.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('search', query=query, page=courses.prev_num) }}" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Précédent">
+                    <span aria-hidden="true">&laquo;</span>
+                </span>
+            </li>
+            {% endif %}
+
+            {% for num in courses.iter_pages() %}
+                {% if num %}
+                    {% if num == courses.page %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                    {% else %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('search', query=query, page=num) }}">{{ num }}</a>
+                        </li>
+                    {% endif %}
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if courses.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('search', query=query, page=courses.next_num) }}" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link" aria-label="Suivant">
+                    <span aria-hidden="true">&raquo;</span>
+                </span>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endblock %}
+📄 Fichier category.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Catégorie : {{ categorie }}{% endblock %}
+{% block content %}
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-3">
+            <h2 class="text-xl font-bold mb-3">Catégories</h2>
+            <div class="list-group">
+                {% for cat in categories %}
+                <a href="{{ url_for('category_view', categorie=cat[0]) }}" class="list-group-item list-group-item-action bg-gray-700 text-gray-200 hover:bg-gray-600 {% if cat[0] == categorie %}active{% endif %}">{{ cat[0] }}</a>
+                {% endfor %}
+            </div>
+            
+            <h2 class="text-xl font-bold mt-4 mb-3">Recherche dans la catégorie</h2>
+            <form method="get" action="{{ url_for('category_view', categorie=categorie) }}">
+                <input type="text" class="form-control mb-2" name="search" placeholder="Rechercher un cours" value="{{ search }}">
+                <button type="submit" class="btn btn-primary w-100">Rechercher</button>
+            </form>
+        </div>
+        <div class="col-md-9">
+            <h2 class="text-xl font-bold mb-3">Cours dans la catégorie : {{ categorie }}</h2>
+            <div class="row">
+                {% for course in courses.items %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card h-100 bg-gray-800 text-white rounded-lg overflow-hidden shadow-lg">
+                        <img src="{{ course.image_url }}" class="card-img-top" alt="{{ course.title }}">
+                        <div class="card-body">
+                            <h5 class="card-title text-xl font-bold">{{ course.title }}</h5>
+                            <p class="card-text text-sm">{{ course.description[:100] }}...</p>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <span class="text-lg font-bold text-primary">{{ course.price }} €</span>
+                            <a href="{{ url_for('course_detail', course_id=course.id) }}" class="btn btn-primary btn-sm">Détails</a>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p>Aucun cours trouvé dans cette catégorie.</p>
+                {% endfor %}
+            </div>
+            
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if courses.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=courses.prev_num) }}" aria-label="Précédent">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Précédent">
+                            <span aria-hidden="true">&laquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+
+                    {% for num in courses.iter_pages() %}
+                        {% if num %}
+                            {% if num == courses.page %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% else %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=num) }}">{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if courses.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=courses.next_num) }}" aria-label="Suivant">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Suivant">
+                            <span aria-hidden="true">&raquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+📄 Fichier course_detail.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}{{ course.title }}{% endblock %}
+{% block content %}
+<div class="container my-5">
+    <a href="{{ url_for('index') }}" class="btn btn-secondary mb-4">⬅ Retour à la page d'accueil</a>
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card bg-gray-800 text-white shadow-lg rounded-lg overflow-hidden">
+                <img src="{{ course.image_url }}" class="card-img-top" alt="{{ course.title }}">
+                <div class="card-body">
+                    <h1 class="card-title text-3xl font-bold">{{ course.title }}</h1>
+                    <p class="card-text">{{ course.description }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mt-4 mt-md-0">
+            <div class="card bg-gray-800 text-white shadow-lg rounded-lg p-4">
+                <h2 class="text-2xl font-bold mb-3">Prix: {{ course.price }} €</h2>
+                <p><strong>Catégorie:</strong> {{ course.categorie }}</p>
+                <a href="{{ url_for('checkout', course_id=course.id) }}" class="btn btn-primary w-100">Acheter maintenant</a>
+                <a href="{{ course.link }}" class="btn btn-outline-light w-100 mt-2">Voir le cours</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+📄 Fichier checkout.html
+HTML
+
+{% extends "base.html" %}
+{% block title %}Finaliser la commande{% endblock %}
+{% block content %}
+<div class="container my-5">
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="alert alert-success">
+        {{ messages[0] }}
+    </div>
+    {% endif %}
+    {% endwith %}
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card bg-gray-800 text-white rounded-lg shadow-lg">
+                <div class="card-body">
+                    <h1 class="card-title text-2xl font-bold mb-3">Commande pour : {{ course.title }}</h1>
+                    <p class="card-text">{{ course.description }}</p>
+                    <hr>
+                    <h2 class="text-xl font-bold mt-3">Prix : {{ course.price }} €</h2>
+                    <img src="{{ course.image_url }}" alt="{{ course.title }}" class="img-fluid mt-3 rounded">
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mt-4 mt-md-0">
+            <div class="card bg-gray-800 text-white rounded-lg shadow-lg p-4">
+                <h2 class="text-2xl font-bold mb-3">Vos informations</h2>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="firstName" class="form-label">Prénom</label>
+                        <input type="text" class="form-control" id="firstName" name="first_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="lastName" class="form-label">Nom de famille</label>
+                        <input type="text" class="form-control" id="lastName" name="last_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="country" class="form-label">Pays</label>
+                        <input type="text" class="form-control" id="country" name="country" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="city" class="form-label">Ville</label>
+                        <input type="text" class="form-control" id="city" name="city" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Adresse complète</label>
+                        <input type="text" class="form-control" id="address" name="address" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Numéro de téléphone</label>
+                        <input type="tel" class="form-control" id="phone" name="phone" required>
+                    </div>
+                     <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantité</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required min="1" value="1">
+                    </div>
+                    <div class="mb-3">
+                        <label for="whatsapp" class="form-label">Numéro WhatsApp (optionnel)</label>
+                        <input type="tel" class="form-control" id="whatsapp" name="whatsapp">
+                    </div>
+                    <div class="mb-3">
+                        <label for="message" class="form-label">Message (optionnel)</label>
+                        <textarea class="form-control" id="message" name="message" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Envoyer la demande</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+

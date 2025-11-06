@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Demandes des clients - Administration{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-comments me-2"></i>Demandes des clients</h1>
+        <div>
+            <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left me-2"></i>Retour au panneau
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Filtres de recherche</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('admin_comments') }}">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="product" class="form-label">Produit</label>
+                        <input type="text" name="product" class="form-control" placeholder="Filtrer par produit" value="{{ request.args.get('product', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="first_name" class="form-label">Prénom</label>
+                        <input type="text" name="first_name" class="form-control" placeholder="Filtrer par prénom" value="{{ request.args.get('first_name', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="last_name" class="form-label">Nom</label>
+                        <input type="text" name="last_name" class="form-control" placeholder="Filtrer par nom" value="{{ request.args.get('last_name', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="processed" class="form-label">Statut</label>
+                        <select name="processed" class="form-control">
+                            <option value="">Tous les statuts</option>
+                            <option value="false" {% if request.args.get('processed') == 'false' %}selected{% endif %}>Non traitées</option>
+                            <option value="true" {% if request.args.get('processed') == 'true' %}selected{% endif %}>Traitées</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <label for="country" class="form-label">Pays</label>
+                        <input type="text" name="country" class="form-control" placeholder="Filtrer par pays" value="{{ request.args.get('country', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="city" class="form-label">Ville</label>
+                        <input type="text" name="city" class="form-control" placeholder="Filtrer par ville" value="{{ request.args.get('city', '') }}">
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Filtrer
+                        </button>
+                        <a href="{{ url_for('admin_comments') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-refresh me-2"></i>Réinitialiser
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-primary">{{ comments|length }}</h3>
+                    <p class="mb-0">Total demandes</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-success">{{ comments|selectattr("is_processed", "equalto", true)|list|length }}</h3>
+                    <p class="mb-0">Traitées</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-warning">{{ comments|selectattr("is_processed", "equalto", false)|list|length }}</h3>
+                    <p class="mb-0">En attente</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-info">{{ comments|map(attribute='quantity')|sum }}</h3>
+                    <p class="mb-0">Articles demandés</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des demandes -->
+    {% if comments %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Liste des demandes</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Produit</th>
+                        <th>Client</th>
+                        <th>Contact</th>
+                        <th>Adresse</th>
+                        <th>Quantité</th>
+                        <th>Date</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for comment in comments %}
+                    <tr class="{% if not comment.is_processed %}table-warning{% endif %}">
+                        <td>
+                            {% if comment.product %}
+                            <a href="{{ url_for('product_detail', product_id=comment.product.id) }}" target="_blank" class="text-decoration-none">
+                                {{ comment.product.title }}
+                            </a>
+                            <br><small class="text-muted">{{ comment.product.categorie }}</small>
+                            {% else %}
+                            <span class="text-muted">Produit supprimé</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ comment.first_name }} {{ comment.last_name }}</strong>
+                            <br><small class="text-muted">{{ comment.country }}, {{ comment.city }}</small>
+                        </td>
+                        <td>
+                            <div>
+                                <i class="fas fa-phone me-1"></i>{{ comment.phone }}
+                            </div>
+                            {% if comment.whatsapp %}
+                            <div>
+                                <i class="fab fa-whatsapp me-1 text-success"></i>{{ comment.whatsapp }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td>{{ comment.address }}</td>
+                        <td>
+                            <span class="badge bg-info">{{ comment.quantity }}</span>
+                        </td>
+                        <td>{{ comment.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td>
+                            {% if comment.is_processed %}
+                                <span class="badge bg-success">Traitée</span>
+                            {% else %}
+                                <span class="badge bg-warning">En attente</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('toggle_request', request_id=comment.id) }}" 
+                                   class="btn btn-sm {% if comment.is_processed %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                                    {% if comment.is_processed %}
+                                        <i class="fas fa-undo"></i>
+                                    {% else %}
+                                        <i class="fas fa-check"></i>
+                                    {% endif %}
+                                </a>
+                                <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#messageModal{{ comment.id }}">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Modal pour afficher le message -->
+                    <div class="modal fade" id="messageModal{{ comment.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Message de {{ comment.first_name }} {{ comment.last_name }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p><strong>Produit :</strong> {% if comment.product %}{{ comment.product.title }}{% else %}Produit supprimé{% endif %}</p>
+                                    <p><strong>Quantité :</strong> {{ comment.quantity }}</p>
+                                    <p><strong>Message :</strong></p>
+                                    <div class="border p-3 bg-light rounded">
+                                        {{ comment.message or "Aucun message spécifique" }}
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+        <h4>Aucune demande trouvée</h4>
+        <p class="text-muted">{% if request.args %}Aucune demande ne correspond à vos critères de recherche.{% else %}Aucune demande client pour le moment.{% endif %}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

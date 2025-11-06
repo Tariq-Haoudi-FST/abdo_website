@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Accueil - Linge de Maison{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-light py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <h1 class="display-4 fw-bold text-primary">Linge de Maison Premium</h1>
+                <p class="lead">Découvrez notre collection exclusive de linge de maison. Qualité, confort et élégance pour votre intérieur.</p>
+                <a href="#products" class="btn btn-primary btn-lg">Découvrir nos produits</a>
+            </div>
+            <div class="col-lg-6">
+                <img src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&h=400&fit=crop" alt="Linge de maison" class="img-fluid rounded">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Offres spéciales -->
+{% if offers %}
+<section class="py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">Offres Spéciales</h2>
+        <div class="row">
+            {% for offer in offers %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <img src="{{ offer.image_url }}" class="card-img-top" style="height: 200px; object-fit: cover;" alt="{{ offer.title }}">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ offer.title }}</h5>
+                        <p class="card-text">{{ offer.description }}</p>
+                        {% if offer.link %}
+                        <a href="{{ offer.link }}" class="btn btn-primary">En savoir plus</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Catégories populaires -->
+<section class="py-5 bg-light" id="categories">
+    <div class="container">
+        <h2 class="text-center mb-5">Nos Catégories</h2>
+        <div class="row">
+            <div class="col-md-6 col-lg-3 mb-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-bed fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Draps</h5>
+                        <p class="card-text">Draps en coton, lin et soie pour un sommeil parfait</p>
+                        <a href="{{ url_for('category_view', categorie='Draps') }}" class="btn btn-outline-primary">Voir plus</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-bath fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Serviettes</h5>
+                        <p class="card-text">Serviettes douces et absorbantes pour votre bien-être</p>
+                        <a href="{{ url_for('category_view', categorie='Serviettes') }}" class="btn btn-outline-primary">Voir plus</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-cloud fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Couettes</h5>
+                        <p class="card-text">Couettes et édredons pour toutes les saisons</p>
+                        <a href="{{ url_for('category_view', categorie='Couettes') }}" class="btn btn-outline-primary">Voir plus</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3 mb-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-moon fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Oreillers</h5>
+                        <p class="card-text">Oreillers ergonomiques pour un sommeil réparateur</p>
+                        <a href="{{ url_for('category_view', categorie='Oreillers') }}" class="btn btn-outline-primary">Voir plus</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Produits récents -->
+<section class="py-5" id="products">
+    <div class="container">
+        <h2 class="text-center mb-5">Nos Produits</h2>
+        {% if products.items %}
+        <div class="row">
+            {% for product in products.items %}
+            <div class="col-md-6 col-lg-3 mb-4">
+                <div class="card h-100">
+                    {% set primary_image = product.images|selectattr("is_primary", "equalto", true)|first %}
+                    {% if primary_image %}
+                        <img src="{{ primary_image.image_url }}" class="product-img card-img-top" alt="{{ product.title }}">
+                    {% elif product.images %}
+                        <img src="{{ product.images[0].image_url }}" class="product-img card-img-top" alt="{{ product.title }}">
+                    {% else %}
+                        <img src="https://via.placeholder.com/300x250?text=Image+non+disponible" class="product-img card-img-top" alt="{{ product.title }}">
+                    {% endif %}
+                    <div class="card-body d-flex flex-column">
+                        <span class="category-badge mb-2">{{ product.categorie }}</span>
+                        <h5 class="card-title">{{ product.title }}</h5>
+                        <p class="card-text flex-grow-1">{{ product.description[:100] }}{% if product.description|length > 100 %}...{% endif %}</p>
+                        <div class="mt-auto">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="h5 text-primary mb-0">{{ "%.2f"|format(product.price) }} DH</span>
+                                <a href="{{ url_for('product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">Voir détails</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination -->
+        {% if products.pages > 1 %}
+        <nav aria-label="Navigation des produits" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if products.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('index', page=products.prev_num) }}">Précédent</a>
+                </li>
+                {% endif %}
+                
+                {% for page_num in products.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != products.page %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('index', page=page_num) }}">{{ page_num }}</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ page_num }}</span>
+                        </li>
+                        {% endif %}
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if products.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('index', page=products.next_num) }}">Suivant</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="text-center">
+            <p class="lead">Aucun produit disponible pour le moment.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- Section Avantages -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4 text-center mb-4">
+                <i class="fas fa-shipping-fast fa-3x text-primary mb-3"></i>
+                <h5>Livraison Rapide</h5>
+                <p>Livraison gratuite à partir de 50Dhs d'achat</p>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <i class="fas fa-medal fa-3x text-primary mb-3"></i>
+                <h5>Qualité Premium</h5>
+                <p>Produits sélectionnés pour leur qualité exceptionnelle</p>
+            </div>
+            <div class="col-md-4 text-center mb-4">
+                <i class="fas fa-headset fa-3x text-primary mb-3"></i>
+                <h5>Service Client</h5>
+                <p>Support client disponible 7j/7 pour vous accompagner</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

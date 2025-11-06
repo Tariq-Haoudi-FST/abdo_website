@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ categorie }} - Linge de Maison{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Accueil</a></li>
+            <li class="breadcrumb-item active">{{ categorie }}</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h2">{{ categorie }}</h1>
+            <p class="text-muted">Découvrez notre sélection de {{ categorie.lower() }} de qualité premium</p>
+        </div>
+        <div class="col-md-4">
+            <form method="GET" class="d-flex">
+                <input type="text" name="search" class="form-control me-2" placeholder="Rechercher dans {{ categorie }}" value="{{ search }}">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% if products.items %}
+    <div class="row">
+        {% for product in products.items %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                {% set primary_image = product.images|selectattr("is_primary", "equalto", true)|first %}
+                {% if primary_image %}
+                    <img src="{{ primary_image.image_url }}" class="product-img card-img-top" alt="{{ product.title }}">
+                {% elif product.images %}
+                    <img src="{{ product.images[0].image_url }}" class="product-img card-img-top" alt="{{ product.title }}">
+                {% else %}
+                    <img src="https://via.placeholder.com/300x250?text=Image+non+disponible" class="product-img card-img-top" alt="{{ product.title }}">
+                {% endif %}
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">{{ product.title }}</h5>
+                    <p class="card-text flex-grow-1">{{ product.description[:100] }}{% if product.description|length > 100 %}...{% endif %}</p>
+                    {% if product.material %}
+                    <small class="text-muted">Matière: {{ product.material }}</small>
+                    {% endif %}
+                    {% if product.size %}
+                    <small class="text-muted">Taille: {{ product.size }}</small>
+                    {% endif %}
+                    <div class="mt-auto pt-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="h5 text-primary mb-0">{{ "%.2f"|format(product.price) }} Dhs</span>
+                            <a href="{{ url_for('product_detail', product_id=product.id) }}" class="btn btn-primary btn-sm">Voir détails</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if products.pages > 1 %}
+    <nav aria-label="Navigation des produits" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if products.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=products.prev_num, search=search) }}">Précédent</a>
+            </li>
+            {% endif %}
+            
+            {% for page_num in products.iter_pages() %}
+                {% if page_num %}
+                    {% if page_num != products.page %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=page_num, search=search) }}">{{ page_num }}</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_num }}</span>
+                    </li>
+                    {% endif %}
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+                {% endif %}
+            {% endfor %}
+            
+            {% if products.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('category_view', categorie=categorie, page=products.next_num, search=search) }}">Suivant</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+        <h3>Aucun produit trouvé</h3>
+        <p class="text-muted">{% if search %}Aucun produit ne correspond à votre recherche "{{ search }}"{% else %}Aucun produit disponible dans cette catégorie pour le moment{% endif %}</p>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Retour à l'accueil</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
